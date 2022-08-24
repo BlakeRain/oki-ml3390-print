@@ -26,6 +26,7 @@ fn main() {
             let stdin = std::io::stdin();
             let mut lines = stdin.lock().lines();
 
+            // Read lines from 'stdin' and write them to the printer
             while let Some(buffer) = lines.next() {
                 match buffer {
                     Err(err) => panic!("Unable to read from stdin: {:?}", err),
@@ -45,6 +46,7 @@ fn main() {
                 }
             }
 
+            // Write a form-feed at the end of the document
             if let Err(err) = handle.write_bulk(1, "\x0c".as_bytes(), Duration::from_secs(10)) {
                 panic!("Unable to write to printer: {:?}", err);
             }
