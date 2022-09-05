@@ -1,6 +1,74 @@
-use std::{io::BufRead, time::Duration};
+use clap::Parser;
+use rusb::{DeviceHandle, GlobalContext};
+use std::{
+    io::{BufRead, Read},
+    time::Duration,
+};
+
+#[derive(Debug, Parser)]
+struct Options {
+    /// Read binary from stdin (useful for Epson escape data from GhostScript)
+    #[clap(short, long)]
+    binary: bool,
+    /// Add a form-feed to the end of the output (unavailable with `--binary`)
+    #[clap(short, long)]
+    form_feed: bool,
+}
+
+fn feed_lines(handle: &DeviceHandle<GlobalContext>) {
+    let stdin = std::io::stdin().lock();
+    let mut lines = stdin.lines();
+
+    while let Some(buffer) = lines.next() {
+        match buffer {
+            Err(err) => panic!("Unable to read from stdin: {:?}", err),
+            Ok(mut buffer) => {
+                buffer.push('\n');
+
+                let slice = buffer.as_bytes();
+                let mut written = 0;
+
+                while written < slice.len() {
+                    match handle.write_bulk(1, &slice[written..], Duration::from_secs(10)) {
+                        Err(err) => panic!("Unable to write to printer: {:?}", err),
+                        Ok(n) => written = n,
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn feed_binary(handle: &DeviceHandle<GlobalContext>) {
+    let mut stdin = std::io::stdin().lock();
+    let mut buffer = [0; 1024];
+
+    loop {
+        match stdin.read(&mut buffer[..]) {
+            Err(err) => panic!("Unable to read from stdin: {:?}", err),
+            Ok(0) => break,
+            Ok(length) => {
+                let mut slice = &buffer[..];
+                let mut written = 0;
+                while written < length {
+                    match handle.write_bulk(1, slice, Duration::from_secs(10)) {
+                        Err(err) => panic!("Unable to write to printer: {:?}", err),
+                        Ok(n) => {
+                            written = n;
+                            if n < length {
+                                slice = &buffer[written..];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 fn main() {
+    let options = Options::parse();
+
     let found = rusb::devices()
         .expect("Unable to retrieve devices")
         .iter()
@@ -23,32 +91,23 @@ fn main() {
                 .claim_interface(0)
                 .expect("Attempted to claim interface");
 
-            let stdin = std::io::stdin();
-            let mut lines = stdin.lock().lines();
+            if options.binary {
+                if options.form_feed {
+                    eprintln!("Ignoring use of '--form-feed' in binary mode");
+                }
 
-            // Read lines from 'stdin' and write them to the printer
-            while let Some(buffer) = lines.next() {
-                match buffer {
-                    Err(err) => panic!("Unable to read from stdin: {:?}", err),
-                    Ok(mut buffer) => {
-                        buffer.push('\n');
+                feed_binary(&handle);
+            } else {
+                feed_lines(&handle);
 
-                        let slice = buffer.as_bytes();
-                        let mut written = 0;
-
-                        while written < slice.len() {
-                            match handle.write_bulk(1, slice, Duration::from_secs(10)) {
-                                Err(err) => panic!("Unable to write to printer: {:?}", err),
-                                Ok(n) => written = n,
-                            }
-                        }
+                if options.form_feed {
+                    // Write a form-feed at the end of the document
+                    if let Err(err) =
+                        handle.write_bulk(1, "\x0c".as_bytes(), Duration::from_secs(10))
+                    {
+                        panic!("Unable to write to printer: {:?}", err);
                     }
                 }
-            }
-
-            // Write a form-feed at the end of the document
-            if let Err(err) = handle.write_bulk(1, "\x0c".as_bytes(), Duration::from_secs(10)) {
-                panic!("Unable to write to printer: {:?}", err);
             }
         }
     }
