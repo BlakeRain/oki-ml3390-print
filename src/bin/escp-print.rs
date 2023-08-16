@@ -1,6 +1,6 @@
 use clap::Parser;
 use humansize::{format_size, BINARY};
-use std::{io::BufRead, path::Path};
+use std::{fmt::Write, io::BufRead, path::Path};
 use synoptic::{languages, Highlighter, Token};
 use time::{format_description::well_known::Rfc2822, OffsetDateTime};
 
@@ -112,32 +112,42 @@ impl Header {
 }
 
 fn print_string(highlighter: &Option<Highlighter>, content: String) {
-    if let Some(highlighter) = highlighter {
-        for (c, row) in highlighter.run(&content).iter().enumerate() {
-            print!("{:0>5}", 1 + c);
+    let lines: Vec<String> = if let Some(highlighter) = highlighter {
+        let mut lines = Vec::new();
+        for row in highlighter.run(&content).iter() {
+            // print!("{:0>5} ", 1 + c);
 
+            let mut line = String::new();
             for token in row {
                 match token {
-                    Token::Text(txt) => print!("{}", txt),
+                    Token::Text(txt) => write!(&mut line, "{}", txt),
                     Token::Start(kind) => match kind.as_str() {
-                        "keyword" => print!("{}", CODE_BOLD_ENABLE),
-                        "comment" => print!("{}", CODE_ITALIC_ENABLE),
-                        "string" => print!("{}", CODE_UNDERLINE_ENABLE),
-                        _ => (),
+                        "keyword" => write!(&mut line, "{}", CODE_BOLD_ENABLE),
+                        "comment" => write!(&mut line, "{}", CODE_ITALIC_ENABLE),
+                        "string" => write!(&mut line, "{}", CODE_UNDERLINE_ENABLE),
+                        _ => Ok(()),
                     },
                     Token::End(kind) => match kind.as_str() {
-                        "keyword" => print!("{}", CODE_BOLD_DISABLE),
-                        "comment" => print!("{}", CODE_ITALIC_DISABLE),
-                        "string" => print!("{}", CODE_UNDERLINE_DISABLE),
-                        _ => (),
+                        "keyword" => write!(&mut line, "{}", CODE_BOLD_DISABLE),
+                        "comment" => write!(&mut line, "{}", CODE_ITALIC_DISABLE),
+                        "string" => write!(&mut line, "{}", CODE_UNDERLINE_DISABLE),
+                        _ => Ok(()),
                     },
                 }
+                .expect("Unable to write to string");
             }
 
-            println!();
+            lines.push(line);
         }
+
+        lines
     } else {
-        print!("{}", content);
+        content.split('\n').map(ToString::to_string).collect()
+    };
+
+    let line_max = lines.len().to_string().len();
+    for (index, line) in lines.into_iter().enumerate() {
+        println!("{:0>width$} {}", index, line, width = line_max);
     }
 }
 
