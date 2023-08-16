@@ -16,10 +16,7 @@ struct Options {
 }
 
 fn feed_lines(handle: &DeviceHandle<GlobalContext>) {
-    let stdin = std::io::stdin().lock();
-    let mut lines = stdin.lines();
-
-    while let Some(buffer) = lines.next() {
+    for buffer in std::io::stdin().lock().lines() {
         match buffer {
             Err(err) => panic!("Unable to read from stdin: {:?}", err),
             Ok(mut buffer) => {
@@ -76,7 +73,7 @@ fn main() {
             let desc = device
                 .device_descriptor()
                 .expect("Unable to access device descriptor");
-            return desc.vendor_id() == 0x06bc && desc.product_id() == 0x0031;
+            desc.vendor_id() == 0x06bc && desc.product_id() == 0x0031
         });
 
     match found {

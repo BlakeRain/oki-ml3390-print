@@ -1,6 +1,6 @@
 use clap::Parser;
-use humansize::{file_size_opts, FileSize};
-use std::io::BufRead;
+use humansize::{format_size, BINARY};
+use std::{io::BufRead, path::Path};
 use synoptic::{languages, Highlighter, Token};
 use time::{format_description::well_known::Rfc2822, OffsetDateTime};
 
@@ -15,12 +15,12 @@ struct Options {
     paths: Vec<std::path::PathBuf>,
 }
 
-const CODE_BOLD_ENABLE: &'static str = "\x1bE";
-const CODE_BOLD_DISABLE: &'static str = "\x1bF";
-const CODE_ITALIC_ENABLE: &'static str = "\x1b4";
-const CODE_ITALIC_DISABLE: &'static str = "\x1b5";
-const CODE_UNDERLINE_ENABLE: &'static str = "\x1b-1";
-const CODE_UNDERLINE_DISABLE: &'static str = "\x1b-0";
+const CODE_BOLD_ENABLE: &str = "\x1bE";
+const CODE_BOLD_DISABLE: &str = "\x1bF";
+const CODE_ITALIC_ENABLE: &str = "\x1b4";
+const CODE_ITALIC_DISABLE: &str = "\x1b5";
+const CODE_UNDERLINE_ENABLE: &str = "\x1b-1";
+const CODE_UNDERLINE_DISABLE: &str = "\x1b-0";
 
 struct HeaderStat {
     title: String,
@@ -55,16 +55,13 @@ impl HeaderStat {
 
         stats.push(Self::new(
             "File Size".to_string(),
-            format!(
-                "{}",
-                metadata.len().file_size(file_size_opts::BINARY).unwrap()
-            ),
+            format_size(metadata.len(), BINARY),
         ));
 
         stats
     }
 
-    fn from_file(path: &std::path::PathBuf) -> Vec<Self> {
+    fn from_file(path: &Path) -> Vec<Self> {
         path.metadata().map(Self::from_stat).unwrap_or_default()
     }
 }
@@ -75,7 +72,7 @@ struct Header {
 }
 
 impl Header {
-    fn for_file(path: &std::path::PathBuf, title: &Option<String>) -> Self {
+    fn for_file(path: &Path, title: &Option<String>) -> Self {
         Self {
             title: title
                 .clone()
@@ -116,9 +113,8 @@ impl Header {
 
 fn print_string(highlighter: &Option<Highlighter>, content: String) {
     if let Some(highlighter) = highlighter {
-        let highlighting = highlighter.run(&content);
-        for (c, row) in highlighting.iter().enumerate() {
-            print!("{: >5} |", 1 + c);
+        for (c, row) in highlighter.run(&content).iter().enumerate() {
+            print!("{:0>5}", 1 + c);
 
             for token in row {
                 match token {
@@ -138,7 +134,7 @@ fn print_string(highlighter: &Option<Highlighter>, content: String) {
                 }
             }
 
-            println!("");
+            println!();
         }
     } else {
         print!("{}", content);
@@ -151,11 +147,8 @@ fn print_file(highlighter: &Option<Highlighter>, path: std::path::PathBuf) {
 }
 
 fn print_stdin(highlighter: &Option<Highlighter>) {
-    let stdin = std::io::stdin();
-    let mut lines = stdin.lock().lines();
     let mut content = String::new();
-
-    while let Some(buffer) = lines.next() {
+    for buffer in std::io::stdin().lock().lines() {
         match buffer {
             Err(err) => panic!("Unable to read from stdin: {:?}", err),
             Ok(buffer) => {
@@ -175,10 +168,7 @@ fn find_highlighter_for_extension(ext: &str) -> Option<Highlighter> {
     }
 }
 
-fn find_highlighter_for_path(
-    ext: Option<String>,
-    path: &std::path::PathBuf,
-) -> Option<Highlighter> {
+fn find_highlighter_for_path(ext: Option<String>, path: &Path) -> Option<Highlighter> {
     if let Some(path_ext) = path.extension() {
         if let Some(path_ext) = path_ext.to_str() {
             return find_highlighter_for_extension(path_ext);
@@ -195,7 +185,7 @@ fn find_highlighter_for_path(
 fn main() {
     let options = Options::parse();
 
-    if options.paths.len() > 0 {
+    if !options.paths.is_empty() {
         for path in options.paths {
             if options.header {
                 let header = Header::for_file(&path, &options.title);
