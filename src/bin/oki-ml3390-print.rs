@@ -45,13 +45,15 @@ fn feed_binary(handle: &DeviceHandle<GlobalContext>) {
             Err(err) => panic!("Unable to read from stdin: {:?}", err),
             Ok(0) => break,
             Ok(length) => {
-                let mut slice = &buffer[..];
+                println!("Read {length} bytes");
+                let mut slice = &buffer[..length];
                 let mut written = 0;
                 while written < length {
                     match handle.write_bulk(1, slice, Duration::from_secs(10)) {
                         Err(err) => panic!("Unable to write to printer: {:?}", err),
                         Ok(n) => {
                             written = n;
+                            println!("Written {n} bytes; {written}/{length}");
                             if n < length {
                                 slice = &buffer[written..];
                             }
@@ -91,6 +93,11 @@ fn main() {
             if options.binary {
                 if options.form_feed {
                     eprintln!("Ignoring use of '--form-feed' in binary mode");
+                }
+
+                match handle.write_bulk(1, &[0x1b, 0x40], Duration::from_secs(10)) {
+                    Ok(n) => assert_eq!(n, 2, "Only transmitted {n} initialization bytes"),
+                    Err(err) => panic!("Unable to send initialization bytes to printer: {err:?}"),
                 }
 
                 feed_binary(&handle);
