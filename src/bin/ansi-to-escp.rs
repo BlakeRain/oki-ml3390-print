@@ -106,6 +106,7 @@ fn main() {
                 Err(err) => panic!("Unable to read from stdin: {:?}", err),
                 Ok(buffer) => {
                     content.push_str(&buffer);
+                    content.push('\n');
                 }
             }
         }
